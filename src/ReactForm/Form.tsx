@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import * as Yup from "yup";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 
 interface FormData {
@@ -9,7 +9,7 @@ interface FormData {
   education?: string;
   dob: string;
   email: string;
-  projects: { projectName: string; projectDescription: string }[];
+  previousProjects: { projectName: string; projectDescription: string }[];
   cvType: string;
   cvLink?: string;
   cvFile?: FileList | null;
@@ -24,6 +24,7 @@ interface FormData {
   skills: string[];
   selfDescription: string;
   acceptTerms: boolean;
+  [key: string]: any;
 }
 const initialFormData: FormData = {
   firstName: "",
@@ -31,7 +32,7 @@ const initialFormData: FormData = {
   education: "",
   dob: "",
   email: "",
-  projects: [],
+  previousProjects: [{ projectName: "", projectDescription: "" }],
   cvType: "online",
   cvLink: "",
   cvFile: null,
@@ -53,13 +54,11 @@ const FormComponent: React.FC = () => {
   const handleSkillChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value, checked } = e.target;
     if (checked) {
-     
       setFormData((prevData) => ({
         ...prevData,
         skills: [...prevData.skills, value],
       }));
     } else {
-      
       setFormData((prevData) => ({
         ...prevData,
         skills: prevData.skills.filter((skill: string) => skill !== value),
@@ -71,10 +70,10 @@ const FormComponent: React.FC = () => {
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
     >
   ) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, type } = e.target;
 
     if (type === "checkbox") {
-    
+      const checked = (e.target as HTMLInputElement).checked;
       if (name === "acceptTerms") {
         setFormData((prevData) => ({
           ...prevData,
@@ -89,22 +88,15 @@ const FormComponent: React.FC = () => {
         }));
       }
     } else if (type === "radio") {
-      
-      if (checked) {
-       
-        setFormData((prevData) => ({
-          ...prevData,
-          cvType: value,
-        
-          ...(value === "online" ? { cvFile: null } : { cvLink: "" }),
-        }));
-      }
+      setFormData((prevData) => ({
+        ...prevData,
+        cvType: value,
+        ...(value === "online" ? { cvFile: null } : { cvLink: "" }),
+      }));
     } else {
-    
       setFormData((prevData) => ({
         ...prevData,
         [name]: type === "number" ? parseInt(value) : value,
-        
         ...(name === "cvLink" && formData.cvType === "offline"
           ? { cvFile: null }
           : {}),
@@ -121,10 +113,10 @@ const FormComponent: React.FC = () => {
   ) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const fileName = files[0].name; 
+      const fileName = files[0].name;
       setFormData((prevData) => ({
         ...prevData,
-        profilePhoto: fileName, 
+        profilePhoto: fileName,
       }));
     }
   };
@@ -143,46 +135,50 @@ const FormComponent: React.FC = () => {
     }
   };
 
+  const allowedExtensions = [".pdf", ".doc", ".docx"];
+  const [cvFileError, setCVFileError] = useState<string | null>(null);
+  const [canSubmitForm, setCanSubmitForm] = useState<boolean>(true);
+
   const handleCVFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      const fileName = files[0].name;
-      setFormData((prevData) => ({
-        ...prevData,
-        cvFile: fileName,
-      }));
+      const selectedFile = files[0];
+      const fileNameParts = selectedFile.name.split(".");
+      const fileExtension =
+        fileNameParts[fileNameParts.length - 1].toLowerCase();
+
+      if (!allowedExtensions.includes("." + fileExtension)) {
+        setCVFileError("Only PDF, DOC, and DOCX files are allowed.");
+        setCanSubmitForm(false);
+      } else {
+        setCVFileError(null);
+        setCanSubmitForm(true);
+        setFormData((prevData: any) => ({
+          ...prevData,
+          cvFile: selectedFile,
+        }));
+      }
     }
   };
 
-  const handleProjectChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-    index: number,
-    field: "projectName" | "projectDescription"
-  ) => {
-    const { value } = e.target;
+  const handleProjectNameChange = (index: number, value: string) => {
+    const updatedProjects = [...formData.previousProjects];
+    updatedProjects[index].projectName = value;
     setFormData((prevData) => ({
       ...prevData,
-      projects: prevData.projects.map((project, i) =>
-        i === index ? { ...project, [field]: value } : project
-      ),
+      previousProjects: updatedProjects,
     }));
   };
 
-  const removeProject = (index: number) => {
-    setFormData((prevData) => ({
-      ...prevData,
-      projects: prevData.projects.filter((_project, i) => i !== index),
-    }));
-  };
-
-  const addProject = () => {
-    setFormData((prevData) => ({
-      ...prevData,
-      projects: [
-        ...prevData.projects,
-        { projectName: "", projectDescription: "" },
-      ],
-    }));
+  const handleProjectDescriptionChange = (index: number, value: string) => {
+    const updatedProjects = [...formData.previousProjects];
+    if (updatedProjects[index]) {
+      updatedProjects[index].projectDescription = value;
+      setFormData((prevData) => ({
+        ...prevData,
+        previousProjects: updatedProjects,
+      }));
+    }
   };
 
   const validationSchema = Yup.object().shape({
@@ -193,6 +189,15 @@ const FormComponent: React.FC = () => {
     email: Yup.string()
       .email("Please enter a valid email address.")
       .required("Email is required."),
+    previousProjects: Yup.array().of(
+      Yup.object().shape({
+        projectName: Yup.string().required("Project Name is required."),
+        projectDescription: Yup.string().required(
+          "Project Description is required."
+        ),
+      })
+    ),
+    cvFile: Yup.mixed().nullable(),
     mobileNumber: Yup.string()
       .required("Mobile number is required.")
       .matches(/^[0-9]{10}$/, "Please enter a valid 10-digit mobile number."),
@@ -212,14 +217,11 @@ const FormComponent: React.FC = () => {
     selfDescription: Yup.string()
       .required("Description is required.")
       .max(250, "Description must be at most 250 characters."),
-    profilePhoto: Yup.mixed().test(
-      "fileSize",
-      "Profile photo is required.",
-      (value) => {
-     
+    profilePhoto: Yup.mixed()
+      .nullable()
+      .test("fileSize", "Profile photo is required.", (value) => {
         return value && value.length > 0 && value[0].size > 0;
-      }
-    ),
+      }),
     coverPhoto: Yup.mixed(),
   });
 
@@ -227,21 +229,29 @@ const FormComponent: React.FC = () => {
     register,
     handleSubmit,
     formState: { errors },
+    control,
   } = useForm<any>({
     resolver: yupResolver(validationSchema),
     mode: "onBlur",
+    defaultValues: initialFormData,
   });
 
-  const onSubmit = (_data: FormData) => {
-    console.log(formData);
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "previousProjects",
+  });
+
+  const onSubmit = async (data: FormData) => {
+    if (!canSubmitForm) {
+      return;
+    }
+
+    console.log(data);
     setFormData(initialFormData);
   };
-
   return (
-    
-    
     <form
-    className="mx-auto p-3 border  rounded-lg w-[500px] bg-gray-200"
+      className="mx-auto p-3 border  rounded-lg w-[500px] bg-gray-200"
       onSubmit={handleSubmit(onSubmit)}
       noValidate
     >
@@ -332,29 +342,42 @@ const FormComponent: React.FC = () => {
         )}
       </div>
       <div className="mb-4">
-        <label className="block mb-2 font-bold">Projects:</label>
-        {formData.projects.map((project, index) => (
-          <div key={index} className="mb-2">
+        <label className="block mb-2 font-bold">Previous Projects:</label>
+        {fields.map((item, index) => (
+          <div key={item.id} className=" mb-2">
             <input
               type="text"
+              {...register(`previousProjects.${index}.projectName`)}
+              defaultValue={item.projectName}
+              className="input-field border w-full px-3 py-2 rounded-md mr-2"
               placeholder="Project Name"
-              value={project.projectName}
-              onChange={(e) => handleProjectChange(e, index, "projectName")}
-              className="input-field border  w-full px-3 py-2 rounded-md"
+              onChange={(e) => handleProjectNameChange(index, e.target.value)}
             />
-            <textarea
+            {errors.previousProjects?.[index]?.projectName && (
+              <p className="text-red-500">
+                {errors.previousProjects[index].projectName.message}
+              </p>
+            )}
+            <input
+              type="text"
+              {...register(`previousProjects.${index}.projectDescription`)}
+              defaultValue={item.projectDescription}
+              className="input-field border w-full px-3 py-2 rounded-md my-2"
               placeholder="Project Description"
-              value={project.projectDescription}
               onChange={(e) =>
-                handleProjectChange(e, index, "projectDescription")
+                handleProjectDescriptionChange(index, e.target.value)
               }
-              className="input-field border  w-full px-3 py-2 rounded-md"
             />
-            {index > 0 && (
+            {errors.previousProjects?.[index]?.projectDescription && (
+              <p className="text-red-500">
+                {errors.previousProjects[index].projectDescription.message}
+              </p>
+            )}
+            {index !== 0 && (
               <button
                 type="button"
-                onClick={() => removeProject(index)}
-                className="btn-secondary ml-2"
+                onClick={() => remove(index)}
+                className="btn-primary border border-black  bg-blue-950 text-white ml-2"
               >
                 Remove
               </button>
@@ -363,12 +386,15 @@ const FormComponent: React.FC = () => {
         ))}
         <button
           type="button"
-          onClick={addProject}
-          className="input-field border  rounded-md bg-slate-800 text-white"
+          onClick={() => {
+            append({ projectName: "", projectDescription: "" });
+          }}
+          className="btn-primary border border-black  bg-blue-950 text-white"
         >
           Add Project
         </button>
       </div>
+
       <div className="mb-4">
         <label className="block mb-2 font-bold">CV Type:</label>
         <div className="flex items-center mb-2 justify-center">
@@ -401,7 +427,7 @@ const FormComponent: React.FC = () => {
       {formData.cvType === "online" ? (
         <div className="mb-4">
           <label className="block mb-2 font-bold" htmlFor="cvLink">
-            CV Website Link<span className="text-red-500">*</span>:
+            CV Website Link:
           </label>
           <input
             type="text"
@@ -419,19 +445,20 @@ const FormComponent: React.FC = () => {
       ) : (
         <div className="mb-4">
           <label className="block mb-2 font-bold" htmlFor="cvFile">
-            Upload CV File (PDF/DOC)<span className="text-red-500">*</span>:
+            Upload CV File (PDF/DOC):
           </label>
           <input
             type="file"
             id="cvFile"
             {...register("cvFile")}
-            name="cvFile"
             onChange={handleCVFileChange}
-            required={formData.cvType === "offline"}
-            className="input-field border  rounded-md"
+            className="input-field border rounded-md"
           />
-          {errors.cvFile && (
-            <p className="text-red-500">{errors.cvFile.message}</p>
+          {cvFileError && <p className="text-red-500">{cvFileError}</p>}
+          {!canSubmitForm && cvFileError && (
+            <p className="text-red-500">
+              Form cannot be submitted with incorrect file format.
+            </p>
           )}
         </div>
       )}
@@ -614,9 +641,8 @@ const FormComponent: React.FC = () => {
       {/* Existing form fields... */}
 
       <div className="mb-4">
-      <label className="font-bold">Skills:</label>
+        <label className="font-bold">Skills:</label>
         <div className="flex items-center mb-2 justify-center">
-          
           <div className="mx-4">
             <input
               type="checkbox"
@@ -647,11 +673,10 @@ const FormComponent: React.FC = () => {
             />
             <label>PHP</label>
           </div>
-         
         </div>
         {errors.skills && (
-            <p className="text-red-500">{errors.skills.message}</p>
-          )}
+          <p className="text-red-500">{errors.skills.message}</p>
+        )}
       </div>
       <div className="mb-4">
         <label className="block mb-2 font-bold" htmlFor="selfDescription">
